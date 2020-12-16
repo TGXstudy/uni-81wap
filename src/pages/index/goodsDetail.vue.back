@@ -1,0 +1,632 @@
+<template>
+	<view class="container have-fixed-bottom">
+		<view class="carousel-wrapper">
+			<carousel :list="goods.banners" class="width-100-percent"></carousel>
+		</view>
+		<view class="goods-brief flex-column pd-lr-30 margin-bottom-20">
+			<view class="goods-price">
+				<view class="align-items-baseline margin-right-20">
+					<text class=" fn-sz-28 fn-cl-theme">￥</text>
+					<text class="fn-cl-theme fn-sz-52">{{goods.now_price}}</text>
+				</view>
+				<view>
+					<text v-if="role == 'supplier' || role == 'channeler'" class=" fn-sz-24 fn-cl-ccc">零售价</text>
+					<text class=" fn-sz-24 fn-cl-ccc delete-line">￥{{goods.price}}</text>
+				</view>
+
+			</view>
+			<view class="fn-cl-333 fn-sz-32 margin-bottom-20">
+				{{goods.product_name}}
+			</view>
+			<view class="data-box">
+				<text v-if="role == 'supplier' || role == 'channeler'" class="fn-cl-999 fn-sz-24">起订量 {{goods.start_num}}</text>
+				<text v-else class="fn-cl-999 fn-sz-24">快递 {{goods.postage}}元</text>
+
+				<text class="fn-cl-999 fn-sz-24">销量 {{goods.sale_num}}</text>
+			</view>
+		</view>
+
+		<!-- 参数 规格 -->
+		<view class="param-specs pd-lr-30 margin-bottom-20 flex-column">
+			<view v-if="(role == 'user' || role == 'soldier') && parameter.length>0" class="flex-between param-specs-item" @tap="showParam">
+				<view>
+					<text class="fn-sz-28 fn-cl-999 margin-right-20">参数</text>
+					<text class="fn-sz-28 fn-cl-333">查看参数详情</text>
+				</view>
+				<image class="image-sz-32" :src="require('../../static/images/register/icon-narraw.png')" mode=""></image>
+			</view>
+			<view class="flex-between param-specs-item" @tap="doPurchse('buy')">
+				<view>
+					<text class="fn-sz-28 fn-cl-999 margin-right-20">规格</text>
+					<text class="fn-sz-28 fn-cl-333">请选择商品规格</text>
+				</view>
+				<image class="image-sz-32" :src="require('../../static/images/register/icon-narraw.png')" mode=""></image>
+			</view>
+		</view>
+
+		<!-- 店铺 -->
+		<view class="shop-breif pd-lr-30 align-items-center">
+			<image class="shop-image image-sz-140 margin-right-20" :src="shop.shop_image"></image>
+			<view class="flex-column flex-1 margin-right-20 shop-txt">
+				<text class="fn-sz-28 fn-cl-333 one-line-txt">{{shop.shop_name}}</text>
+				<text class="fn-sz-24 fn-cl-999 two-line-txt">{{shop.describe}}</text>
+			</view>
+			<view class="shop-btn" @tap="goPage('shopDetail',{shopId:shop.shop_id})">
+				<text class="fn-sz-24 fn-cl-fff">进店逛逛</text>
+			</view>
+		</view>
+
+		<view class="goods-detail flex-column">
+			<view class="detail-txt flex-between">
+				<text :class="['fn-sz-28',currentTab == 'detail' ? 'fn-cl-theme':'fn-cl-333' ]" @tap="changeTab('detail')">详情</text>
+				<text :class="['fn-sz-28',currentTab == 'comment' ? 'fn-cl-theme':'fn-cl-333' ]" @tap="changeTab('comment')">评论</text>
+			</view>
+			<view v-if="currentTab == 'detail'" class="pd-lr-30">
+				<rich-text :nodes="goodsContent "></rich-text>
+			</view>
+			<view class="flex-column" v-else-if="currentTab == 'comment'">
+				<comment-list :list="commentList"></comment-list>
+				<view class="all-btn" v-if="hasmore">
+					<text class="fn-cl-999 fn-sz-24" @tap="checkAllComment">查看全部评论</text>
+				</view>
+			</view>
+		</view>
+		<bottom-btn :isCollect="goods.is_collect" :goodsId="goods.id" @doPurchse="doPurchse" @collect="getProductInfo"></bottom-btn>
+
+
+		<uni-popup ref="params" :type="'bottom'" class="popup">
+			<view class="params-wrapper pd-lr-30 flex-column">
+				<view class="width-100-percent justify-content-center">
+					<text class="fn-cl-333 fn-sz-28 line-height-80">商品参数</text>
+				</view>
+				<scroll-view scroll-y="true" style="height: 500upx;">
+					<view class="pd-lr-30 margin-bottom-20 " v-for="(item,idx) in parameter" :key="idx">
+						<text class=" fn-cl-999 fn-sz-28 margin-right-20 ">{{item.key}}</text>
+						<text class=" fn-cl-333 fn-sz-28 param-value ">{{item.val}}</text>
+					</view>
+				</scroll-view>
+				<solid-btn class="width-100-percent margin-bottom-20" @click="closePopup('params')"></solid-btn>
+
+
+			</view>
+		</uni-popup>
+
+
+		<uni-popup ref="specs" :type="'bottom'" class="popup">
+			<view class="specs-wrapper pd-lr-30 flex-column">
+				<view class="specs-brief">
+					<image class="specs-image margin-right-20" :src="curSpec.thumb"></image>
+					<view class="specs-data flex-column flex-between">
+						<view class="flex-column">
+							<text class="fn-sz-24 fn-cl-theme margin-bottom-20">¥{{curSpec.price}}</text>
+							<text class="fn-sz-24 fn-cl-999 ">库存 {{curSpec.stock}}</text>
+						</view>
+						<view class="pifa-box" v-if="(role == 'supplier' || role == 'channeler') && curSpec && curSpec.pifa_price_dec ">
+							<text class="fn-sz-24 fn-cl-333" v-for="(item,idx) in curSpec.pifa_price_dec" :key="idx">
+								{{item.min}}-{{item.max}}件 每件{{item.price}}；
+								<!-- {{curSpec.attr_key.key0+' '+(curSpec.attr_key.key1 ? curSpec.attr_key.key1: '') +" "+selectNum+'件' : ''}} -->
+							</text>
+						</view>
+
+						<view v-else class="">
+							<text class="fn-sz-24 fn-cl-333">已选 {{curSpec && curSpec.attr_key ? curSpec.attr_key.key0+' '+(curSpec.attr_key.key1 ? curSpec.attr_key.key1: '') +" "+selectNum+'件' : ''}}</text>
+						</view>
+					</view>
+					<image class="icon-close image-sz-48" :src="require('../../static/images/index/icon-close.png')" @tap="closeSpecs"></image>
+
+				</view>
+				<view class="specs-list-box flex-column">
+					<view class="specs-item-box flex-column" v-for="(sku,index) in skus" :key="index">
+						<text class=" fn-sz-28 fn-cl-333 line-height-80">{{sku.key}}： </text>
+						<view>
+							<text v-for="(val,idx) in sku.val" :key="idx" :class="['specs-item' ,val.stock > 0 ? val.isCurrent ? 'current-item' : '' : 'dis-item' ]"
+							 @tap="getSkuVal(val,idx,index)">
+								{{val.name}}
+							</text>
+						</view>
+					</view>
+					<view class="buy-amount-box flex-between">
+						<text class="fn-sz-28 fn-cl-333 ">购买数量:</text>
+						<numberbox :value="selectNum" :min="curSpec.start_num || 1" :max="maxNum" @change="changeNum"></numberbox>
+					</view>
+					<solid-btn class="width-100-percent margin-bottom-20" @click="confirmSpec"></solid-btn>
+				</view>
+
+
+			</view>
+		</uni-popup>
+	</view>
+</template>
+
+<script>
+	import uniPopup from "@/components/common/uni-popup.vue"
+	import carousel from "@/components/index/Carousel.vue";
+	import bottomBtn from "@/components/index/BottomBtn.vue"
+	import solidBtn from "@/components/common/SolidBtn.vue"
+	import numberbox from "@/components/cart/numberbox.vue"
+	import commentList from "@/components/index/CommentList.vue"
+	export default {
+		components: {
+			carousel,
+			bottomBtn,
+			uniPopup,
+			solidBtn,
+			numberbox,
+			commentList
+		},
+		data() {
+			return {
+				buyway: 'buy', //购买方式 buy 立即购买  cart 加入购物车
+				currentTab: 'detail', //详情 评论
+				role: 'channeler',
+				goodsId: 0, //商品id
+				goods: {}, //商品信息
+				shop: {}, //店铺信息
+				goodsContent: '', //商品详情，富文本处理之后
+				parameter: [], //商品参数
+				curSpec: {},
+				selectNum: 1, //所选规则的件数
+				maxNum: 100, //所选规则的库存
+				commentList: [], //评论列表
+				hasmore: false, //控制 查看全部 的显示
+				pageSize: 10,
+				page: 1,
+
+				skus: [], //用于遍历显示在页面
+				skus_back: [], //
+				selectSku: {key0:'',key1:''}
+			}
+		},
+		watch: {
+			skus: {
+				immediate: true,
+				deep: true,
+				handler: function(newVal) {
+					console.log("watch------------------start");
+					newVal.forEach((item) => {
+						console.log(item)
+						item.val.forEach((value) => {
+							console.log(value);
+						})
+					})
+					console.log("watch------------------end");
+					return newVal;
+				}
+			}
+
+
+		},
+		onLoad(options) {
+			this.goodsId = options.goodsId || 0;
+			this.role = this.roleToStr(uni.getStorageSync('member').role);
+			// console.log("this.role-----",uni.getStorageSync('member'),this.role);
+			// 获取商品详情
+			this.getProductInfo();
+		},
+		onShow() {
+
+		},
+
+		onPullDownRefresh() {
+			// 获取商品详情
+			this.getProductInfo('refresh');
+		},
+		methods: {
+			//点击选中 规格 val 被点击的规则  
+			// idx 被点击的规则 在规格值中的索引
+			//index 被点击的规格对应在attr_key中的下标
+			getSkuVal(val, idx, index) {
+				console.log("点击选中 规格", val, idx, index);
+				this.selectSku['key'+index]=val.name;
+				console.log("被选中的规格",this.selectSku);
+				
+				//根据所选规格，渲染另一个规格
+				let thekey= 'key'+index ;  //所选规格对应的 attr_key
+				let no = index == 1 ? 0 : 1
+				let anokey= 'key'+ no;  //另一个规格对应的 attr_key
+				
+
+				if( !this.selectSku.key0 ||  !this.selectSku.key1) {
+					let i=1;
+					this.options.forEach((option,_index)=>{
+						if(option.attr_key[thekey] == val.name && i==1){
+							i++;
+							// console.log("--------",this.skus[no]);
+							this.skus[no].val.forEach((sku,)=>{
+								console.log(sku.name,option.attr_key[anokey]);
+								if(sku.name == option.attr_key[anokey]){
+									console.log("eeeeeeeeee");
+									sku={
+										attr_key:option.attr_key,
+										stock:option.stock
+									}
+								}
+								
+							})
+						}
+					})
+				}
+				
+			},
+
+			//获取商品评论 getProductComment
+			getComment() {
+				this.$api.getProductComment({
+					page: this.page,
+					pageSize: this.pageSize,
+					id: this.goodsId
+				}).then(res => {
+					console.log("获取商品评论", res);
+					if (res.code == 200) {
+						this.hasmore = this.page < res.data.last_page
+						this.page = res.data.current_page;
+						if (this.page == 1) {
+							this.commentList = res.data.data
+						} else {
+							this.commentList = this.commentList.concat(res.data.data);
+						}
+					} else {
+						console.log("获取商品评论", res);
+					}
+				})
+			},
+			//  查看全部评论
+			checkAllComment() {
+				this.page = 1;
+				this.pageSize = 1000;
+				this.getComment();
+			},
+			// 获取商品详情
+			getProductInfo(status = '') {
+				this.$api.getProductInfo({
+					id: this.goodsId
+				}).then(res => {
+					console.log("获取商品详情", res);
+					if (res.code == 200) {
+						this.goods = res.data.product;
+						this.shop = res.data.shop;
+						this.goodsContent = this.$mUtils.formatRichText(this.goods.content);
+						this.parameter = this.goods.parameter;
+
+						//处理sku
+						this.options = res.data.options; //sku可能的组合情况 以及 相应的数据
+
+						this.skus = res.data.product.option_names; // 规格名称 和 规格值 
+						this.skus_back = JSON.parse(JSON.stringify(this.skus)); // 规格名称 和 规格值
+						//处理this.skus 用于遍历显示在页面
+						this.skus.forEach((sku, index) => {
+							let _sku = [];
+							sku.val.forEach((val) => {
+								_sku.push({
+									name: val,
+									stock: 1,
+									isCurrent: false,
+								})
+							})
+							sku.val = _sku;
+						})
+
+					} else if (res.code == 210) {
+						this.$mUtils.toast(res.msg, true).then(() => {
+							this.$mRouter.switchTab({
+								route: this.$mRoutesConfig.index
+							})
+						})
+					} else {
+						console.log("获取商品详情", res);
+					}
+				}).finally(() => {
+					this.stopPull(status);
+				})
+			},
+
+
+
+			//修改购买数量
+			changeNum(e) {
+				// console.log("修改购买数量",e);
+				if (!this.curSpec.option_id) {
+					this.$mUtils.toast("请选择规格");
+					return;
+				}
+				this.maxNum = this.curSpec.stock;
+				if (e.value > this.maxNum) {
+					this.$mUtils.toast("库存不足");
+					return;
+				}
+				this.selectNum = e.value;
+			},
+
+			confirmSpec() {
+				//[{'product_id':'17','option_id':'13','num':'2'},{'product_id':'17','option_id':'14','num':'2'},{'product_id':'2','option_id':'6','num':'2'}],
+				console.log("确定", this.curSpec);
+				if (!this.curSpec.option_id) {
+					this.$mUtils.toast("请选择规格");
+					return;
+				}
+
+
+				if (this.buyway == 'cart') { //加入购物车
+					this.addCart({
+						p_id: this.goodsId, //商品id
+						option_id: this.curSpec.option_id, //规格id
+						num: this.selectNum //数量
+					})
+				} else { //立即购买 this.buyway == 'buy'
+					let params = [{
+							product_id: this.goodsId,
+							option_id: this.curSpec.option_id,
+							num: this.selectNum
+						}
+
+					];
+
+					this.goPage('submitOrder', {
+						products: JSON.stringify(params)
+					})
+				}
+
+
+			},
+
+
+
+			//加入购物车
+			addCart(obj) {
+				this.$api.addCart(obj).then(res => {
+					console.log("加入购物车", res);
+					if (res.code == 200) {
+						this.$mUtils.toast(res.msg, true).then(() => {
+							this.closeSpecs()
+						})
+					} else {
+						this.$mUtils.toast(res.msg)
+					}
+				})
+			},
+			doPurchse(buyway) {
+				console.log("购买方式", buyway);
+				this.buyway = buyway;
+				//显示规格   弹窗
+				this.$refs.specs.open();
+				//设置当前被选中的规格的初始值
+				this.curSpec = {
+					price: this.goods.now_price,
+					stock: 0,
+					thumb: this.goods.thumb
+				}
+
+
+			},
+			closeSpecs() {
+				this.$refs.specs.close();
+				this.selectNum = 1;
+				this.skus.forEach(option => {
+					option.sku.forEach(item => {
+						item.is_current = false;
+					})
+				})
+
+			},
+			//关闭 规格/参数 弹窗 
+			closePopup(type) {
+				this.$refs[type].close();
+			},
+			//显示 参数弹窗
+			showParam() {
+				this.$refs.params.open();
+			},
+			changeTab(tabName) {
+				this.currentTab = tabName;
+
+				if (this.currentTab == 'comment') {
+					//获取评论
+					this.getComment()
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.container {
+		background-color: #F9F9F9;
+
+		.carousel-wrapper {
+			width: 100%;
+			height: 700upx;
+		}
+
+		.goods-brief {
+			background-color: #fff;
+
+			.goods-price {
+				height: 120upx;
+				line-height: 120upx;
+				align-items: baseline;
+			}
+
+			.data-box {
+				width: 100%;
+				height: 100upx;
+				line-height: 100upx;
+				justify-content: space-between;
+			}
+		}
+
+
+		.param-specs {
+			background-color: #fff;
+			width: 100%;
+
+			&-item {
+				width: 100%;
+				height: 90upx;
+				align-items: center;
+			}
+		}
+
+		.shop-breif {
+			width: 100%;
+			background-color: #fff;
+			margin-bottom: 20upx;
+			height: 220upx;
+
+			.shop-image {
+				border-radius: 8upx;
+			}
+
+			.shop-txt {
+				height: 140upx;
+				justify-content: space-between;
+			}
+
+			.shop-btn {
+				height: 140upx;
+
+				&>text {
+					display: block;
+					width: 140upx;
+					height: 50upx;
+					background: linear-gradient(313deg, rgba(244, 55, 55, 1) 0%, rgba(250, 42, 145, 1) 100%);
+					border-radius: 40upx;
+					line-height: 50upx;
+					text-align: center;
+				}
+			}
+		}
+
+		.goods-detail {
+			background-color: #fff;
+
+			.detail-txt {
+				width: 100%;
+				height: 80upx;
+				align-items: center;
+
+				&>text {
+					display: inline-block;
+					width: 50%;
+					text-align: center;
+				}
+			}
+
+			.all-btn {
+				width: 100%;
+				height: 100upx;
+				justify-content: center;
+				align-items: center;
+
+				&>text {
+					display: block;
+					width: 200upx;
+					height: 60upx;
+					line-height: 60upx;
+					text-align: center;
+					background-color: #F5F5F5;
+					border-radius: 30upx;
+				}
+			}
+		}
+
+		.popup {
+			/deep/.uni-popup__wrapper-box {
+				border-radius: 20upx 20upx 0 0;
+			}
+		}
+
+		.params-wrapper {
+			padding-top: 40upx;
+			box-sizing: border-box;
+
+
+			.param-value {
+				flex: 1;
+				word-wrap: break-word;
+				word-break: break-all;
+				flex-shrink: 1;
+			}
+
+
+
+		}
+
+		.specs-wrapper {
+			.specs-brief {
+				width: 100%;
+				height: 280upx;
+				align-items: center;
+
+				position: relative;
+
+				.specs-image {
+					width: 200upx;
+					height: 200upx;
+					border-radius: 10upx;
+					// background-color: #999;
+
+				}
+
+				.specs-data {
+					flex: 1;
+					flex-shrink: 1;
+					height: 200upx;
+					padding: 20upx 0;
+					box-sizing: border-box;
+				}
+
+				.pifa-box {
+					flex-wrap: wrap;
+				}
+
+				.icon-close {
+					position: absolute;
+					top: 40upx;
+					right: 0;
+				}
+			}
+
+			.specs-list-box {
+
+				.specs-item-box {
+
+
+					.specs-item {
+						background-color: #f5f5f5;
+						color: #333;
+						font-size: 24upx;
+						padding: 12upx 20upx;
+						margin-bottom: 20upx;
+						margin-right: 20upx;
+						border-radius: 10upx;
+						border: 2upx solid transparent;
+					}
+
+					.dis-item {
+						background-color: rgba(245, 245, 245, 1);
+						color: #CCCCCC;
+						border: 2upx dashed rgba(204, 204, 204, 1);
+					}
+
+					.current-item {
+						color: var(--theme-color);
+						color: $theme-color;
+						background-color: #FFECEC;
+						border: 2upx solid transparent;
+					}
+				}
+
+			}
+
+			.buy-amount-box {
+				height: 100upx;
+				align-items: center;
+				margin: 40upx 0;
+
+			}
+
+		}
+
+
+	}
+</style>
